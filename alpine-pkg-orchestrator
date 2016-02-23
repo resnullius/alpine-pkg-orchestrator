@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+
+declare help="
+Script for orchestrating all the builds for several versions
+
+Usage:
+  alpine-pkg-orchestrator build -t v3.2[:<path>] -p libuv [-k <path>] [-c <path>]
+  alpine-pkg-orchestrator --version
+  alpine-pkg-orchestrator -h | --help
+
+Options:
+  -t                Tag to build, it will look for directories in the \$PWD.
+                    It accepts multiple -t options. Eg: -t v3.3 -t edge.
+                    You can add the repo where to store it by adding a colon to
+                    it with the path (relative to where you run the script
+                    from) indicating where to store it. If not, then it will
+                    default to pkgs/ inside the tag directory. Eg: -t v3.3:/tmp
+                    or -t v3.2:tmp
+  -p                Package to build, it will look inside that directory in the
+                    selected tag for an APKBUILD and will build it.
+  -k                Path to the developer keys (opt for alpine-build-pkg).
+  -c                Path to the abuild.conf (opt for alpine-build-pkg).
+  -h --help         Show this screen.
+  --version         Show versions.
+"
+
+declare version="
+Version: 1.0.0.
+Licensed under the MIT terms.
+"
+
+declare alpine_version
+declare -a tags
+declare pkg_name
+declare tag_dir
+declare repo_dir
+
+
+clean_tag() {
+  if [[ $(grep ':' <<< "$1") == "$1" ]]; then
+    tag_dir=$(sed 's/:.*$//' <<< "$1")
+    repo_dir=$(sed 's/^.*://' <<< "$1")
+  else
+    tag_dir="$1"
+    repo_dir="$tag_dir/pkgs"
+  fi
+
+  if [[ $(grep '^v' <<< "$tag_dir") == "$tag_dir" ]]; then
+    alpine_version=$(sed 's/v//' <<< "$tag_dir")
+  else
+    alpine_version="$tag_dir"
+  fi
+}
+
+compile() {
+  clean_tag "$1"
+  
+  [ ! -d "$tag_dir" ] && echo "No tag named $tag_dir" && exit 1
+  [ -z "$pkg_name" ] && echo "No package given" && exit 1
+  [ ! -d "$tag_dir/$pkg_name" ] && echo "No dir for package $pkg_name" && exit 1
+  
+  if [ ! -d "$repo_dir" ]; then mkdir -p "$repo_dir"; fi
+  repo_dir=$(cd "$repo_dir" && pwd)
+  echo "will use repo_dir as $repo_dir"
+
+  cd "$tag_dir/$pkg_name"
+  
+  [ ! -f "./APKBUILD" ] && \
+    echo "Couldn't find an APKBUILD for that package" && \
+    exit 1
+  
+  echo "Building $tag_dir with alpine $alpine_version"
+  
+  alpine-build-pkg \
+    -v "$alpine_version" \
+    -r "$repo_dir"
+
+  cd ../../
+
+}
+
+parseOpts() {
+  while getopts ":t:p:" opt "$@"; do
+    case "$opt" in
+      t)     tags+=("$OPTARG");;
+      p)     pkg_name="$OPTARG";;
+      \?)    echo "Invalid option -$OPTARG was ignored." >&2;;
+      :)
+        echo "Option -$OPTARG requires an argument." >&2
+        exit 1;;
+    esac
+  done
+  echo "Will build tags:" "${tags[@]}" "for package $pkg_name"
+}
+
+build() {
+  parseOpts "$@"
+  for tag in "${tags[@]}"; do
+    compile "$tag"
+  done
+}
+
+print_version() {
+  echo "$version"
+}
+
+print_help() {
+  echo "$help"
+}
+
+main() {
+  set -eo pipefail; [[ "$TRACE" ]] && set -x
+  declare cmd="$1"
+  case "$cmd" in
+    -h|--help)          shift; print_help "$@";;
+    --version)          shift; print_version "$@";;
+    build)              shift; build "$@";;
+    *)                  print_help "$@";;
+  esac
+}
+
+main "$@"
