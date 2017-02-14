@@ -34,6 +34,8 @@ declare -a tags
 declare pkg_name
 declare tag_dir
 declare repo_dir
+declare keys_dir
+declare conf_dir
 
 
 clean_tag() {
@@ -70,20 +72,37 @@ compile() {
     exit 1
   
   echo "Building $tag_dir with alpine $alpine_version"
+
+  local -a build_args
+
+  build_args=("-v" "$alpine_version")
+  build_args+=("-r" "$repo_dir")
+
+  if [ ! -z "$keys_dir" ]; then
+    build_args+=("-k" "$keys_dir")
+  fi
+
+  if [ ! -z "$conf_dir" ]; then
+    build_args+=("-c" "$conf_dir")
+  fi
   
-  alpine-build-pkg \
-    -v "$alpine_version" \
-    -r "$repo_dir"
+  alpine-build-pkg "${build_args[@]}"
 
   cd ../../
 
 }
 
 parseOpts() {
-  while getopts ":t:p:" opt "$@"; do
+  while getopts ":t:p:k:c:" opt "$@"; do
     case "$opt" in
       t)     tags+=("$OPTARG");;
       p)     pkg_name="$OPTARG";;
+      k)
+        [ ! -d "$OPTARG" ] && echo "No keys dir found" && exit 1
+        keys_dir=$(cd "$OPTARG" && pwd);;
+      c)
+        [ ! -d "$OPTARG" ] && echo "No config dir found" && exit 1
+        conf_dir=$(cd "$OPTARG" && pwd);;
       \?)    echo "Invalid option -$OPTARG was ignored." >&2;;
       :)
         echo "Option -$OPTARG requires an argument." >&2
