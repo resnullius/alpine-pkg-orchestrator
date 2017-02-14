@@ -4,7 +4,8 @@ declare help="
 Script for orchestrating all the builds for several versions
 
 Usage:
-  alpine-pkg-orchestrator build -t v3.2[:<path>] -p libuv [-k <path>] [-c <path>]
+  alpine-pkg-orchestrator build -t v3.2[:<path>] -p libuv [-k <path>]
+    [-c <path>] [-K <path>] [-x <url>] [-x <url>]
   alpine-pkg-orchestrator --version
   alpine-pkg-orchestrator -h | --help
 
@@ -19,7 +20,10 @@ Options:
   -p                Package to build, it will look inside that directory in the
                     selected tag for an APKBUILD and will build it.
   -k                Path to the developer keys (opt for alpine-build-pkg).
+  -K                Path to extra developer keys (only public ones, opt for
+                    alpine-build-pkg).
   -c                Path to the abuild.conf (opt for alpine-build-pkg).
+  -x                Path to extra repos (opt for alpine-build-pkg).
   -h --help         Show this screen.
   --version         Show versions.
 "
@@ -36,6 +40,8 @@ declare tag_dir
 declare repo_dir
 declare keys_dir
 declare conf_dir
+declare extra_keys_dir
+declare -a extra_repos
 
 
 clean_tag() {
@@ -85,6 +91,16 @@ compile() {
   if [ ! -z "$conf_dir" ]; then
     build_args+=("-c" "$conf_dir")
   fi
+
+  if [ ! -z "$extra_keys_dir" ]; then
+    build_args+=("-K" "$extra_keys_dir")
+  fi
+
+  if [ ! "${#extra_repos[@]}" -eq 0 ]; then
+    for repo in "${extra_repos[@]}"; do
+      build_args+=("-x" "$repo")
+    done
+  fi
   
   alpine-build-pkg "${build_args[@]}"
 
@@ -103,6 +119,11 @@ parseOpts() {
       c)
         [ ! -d "$OPTARG" ] && echo "No config dir found" && exit 1
         conf_dir=$(cd "$OPTARG" && pwd);;
+      K)
+        [ ! -d "$OPTARG" ] && echo "No extra keys dir found" && exit 1
+        extra_keys_dir=$(cd "$OPTARG" && pwd);;
+      x)
+        extra_repos+=("$OPTARG");;
       \?)    echo "Invalid option -$OPTARG was ignored." >&2;;
       :)
         echo "Option -$OPTARG requires an argument." >&2
